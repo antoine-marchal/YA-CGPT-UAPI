@@ -1,7 +1,7 @@
 // Monkey-patch fetch to intercept requests to conversation endpoint
 (function () {
     const origFetch = window.fetch;
-  
+    let visibleForUser = false;
     window.fetch = async (...args) => {
       const [input, init] = args;
       const url = typeof input === "string" ? input : (input && input.url) || "";
@@ -48,7 +48,27 @@
                     const v = (parsed && parsed.payload && parsed.payload.v) ?? parsed.v;
   
                     if (eventType === "delta" && v) {
-                      console.log("%c[DELTA]", "color: purple;", { conversation_id: convo, v });
+                        let color = visibleForUser?'green':'red';
+                        if (!Array.isArray(v)) console.log("%c[MESSAGE]", "color: "+color+";", v);
+                        else{
+                            let result = v
+                            .filter(item => item.p.startsWith("/message/content/parts"))
+                            .map(item => item.v)
+                            .join("");
+                            console.log("%c[MESSAGE]", "color: "+color+";", result);
+                        }
+                      
+                    }
+                    else{
+                        if(parsed.type === 'message_stream_complete'){
+                            console.log("%c[DONE]", "color: green;", parsed);
+                            visibleForUser=false;
+                        }
+                        else if(parsed.type === 'message_marker' && parsed.marker === 'user_visible_token'){
+                            console.log("%c[START]", "color: green;", parsed);
+                            visibleForUser=true;
+                        }
+                       else console.log("%c["+eventType+"]", "color: grey;", parsed);
                     }
                   } catch {
                     // ignore non-JSON
@@ -57,20 +77,7 @@
               }
   
               // flush any trailing partial data
-              const tail = buffer.trim();
-              if (tail) {
-                try {
-                  const parsed = JSON.parse(tail);
-                  const convo = parsed.conversation_id ?? parsed.conversationId ?? null;
-                  const v = (parsed && parsed.payload && parsed.payload.v) ?? parsed.v;
-  
-                  if ((parsed.event === "delta" || parsed.eventType === "delta") && v) {
-                    console.log("%c[DELTA]", "color: purple;", { conversation_id: convo, v });
-                  }
-                } catch {
-                  // ignore trailing non-JSON
-                }
-              }
+              
             } catch (err) {
               console.warn("[INTERCEPT] Stream reader error:", err);
             }
@@ -83,10 +90,15 @@
       return origFetch(...args);
     };
   
-    // Helper to restore the original fetch if needed
-    window.__unpatchChatGPTFetch = function () {
-      window.fetch = origFetch;
-      console.log("[INTERCEPT] fetch restored");
-    };
-  })();
+
+
+window.__unpatchChatGPTFetch = function () {
+    window.fetch = origFetch;
+    console.log("[INTERCEPT] fetch restored");
+  };
+// mark as loaded
+  window.__chatgptInterceptorLoaded = true;
+  console.log("[INJECTED] ChatGPT interceptor ready");
+})();
+
   
