@@ -13,6 +13,8 @@
   "dependencies": {
     "camoufox": "^0.1.7",
     "camoufox-js": "^0.7.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
     "playwright-core": "^1.55.0"
   }
 }
