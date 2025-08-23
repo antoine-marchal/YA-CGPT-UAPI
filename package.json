@@ -1,0 +1,18 @@
+{
+  "name": "yatcgptuapi",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "type": "module",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "camoufox": "^0.1.7",
+    "camoufox-js": "^0.7.0",
+    "playwright-core": "^1.55.0"
+  }
+}
