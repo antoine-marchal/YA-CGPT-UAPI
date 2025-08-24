@@ -1,4 +1,12 @@
-// Monkey-patch fetch to intercept requests to conversation endpoint
+/**
+ * jsinject.js
+ * ------------
+ * This script is injected into the ChatGPT web client.
+ * It monkey-patches `fetch` to intercept responses from the conversation endpoint,
+ * and logs tokens as they stream ([START], [MESSAGE], [DONE]).
+ *
+ * It is used internally by `chatgptlistener.js` to capture assistant messages.
+ */
 (function () {
     const origFetch = window.fetch;
     let visibleForUser = false;

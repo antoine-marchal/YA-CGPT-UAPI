@@ -1,7 +1,8 @@
 // index.js
 import express from "express";
 import cors from "cors";
-import { init as listenerInit, sendMessage as listenerSendMessage } from "./chatgptlistener.js";
+import readline from "readline";
+import { playwrightService } from "./services/chatgptService.js";
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -27,66 +28,6 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true, limit: MAX_BODY }));
 
-// ------- Playwright wrapper (single page + simple mutex) -------
-let browser, context, page, sessionFile;
-let readyPromise = null;
-
-class Mutex {
-  constructor() {
-    this.locked = false;
-    this.queue = [];
-  }
-  async acquire() {
-    if (!this.locked) {
-      this.locked = true;
-      return this._release.bind(this);
-    }
-    return new Promise((resolve) => this.queue.push(resolve));
-  }
-  _release() {
-    const next = this.queue.shift();
-    if (next) next(this._release.bind(this));
-    else this.locked = false;
-  }
-}
-const mutex = new Mutex();
-
-const playwrightService = {
-  async initializeBrowser() {
-    if (readyPromise) return readyPromise;
-    readyPromise = (async () => {
-      const s = await listenerInit({
-        headless: false,//process.env.HEADLESS !== "0", // HEADLESS=0 -> headed
-      });
-      browser = s.browser;
-      context = s.context;
-      page = s.page;
-      sessionFile = s.sessionFile;
-      return s;
-    })();
-    return readyPromise;
-  },
-
-  async promptChatGPT(prompt, { onChunk, timeoutMs } = {}) {
-    await this.initializeBrowser();
-    // mutex to avoid two prompts racing in the same page
-    const release = await mutex.acquire();
-    try {
-      return await listenerSendMessage(page, prompt, { onChunk, timeoutMs });
-    } finally {
-      release();
-    }
-  },
-
-  async closeBrowser() {
-    try {
-      if (browser) await browser.close();
-    } finally {
-      browser = context = page = sessionFile = undefined;
-      readyPromise = null;
-    }
-  },
-};
 
 // ------- Startup: initialize browser (fail fast if it can’t) -------
 (async () => {
@@ -99,6 +40,41 @@ const playwrightService = {
     process.exit(1);
   }
 })();
+
+// ------- Refresh context (manual shortcut) -------
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
+
+console.log("Press 'r' + Enter at any time to refresh the browser context.");
+console.log("Press 's' + Enter at any time to save the browser session.");
+rl.on("line", async (input) => {
+  if (input.trim().toLowerCase() === "r") {
+    console.log("♻️  Refreshing browser context...");
+    try {
+      await playwrightService.saveSession();
+      await playwrightService.closeBrowser();
+      await playwrightService.initializeBrowser();
+      console.log("✅ Browser context refreshed successfully.");
+    } catch (err) {
+      console.error("❌ Failed to refresh context:", err);
+    }
+  }
+  else if(input.trim().toLowerCase() === "s") {
+    console.log("♻️  Saving browser session...");
+    try {
+      await playwrightService.saveSession();
+    } catch (err) {
+      console.error("❌ Failed to save session:", err);
+    }
+  }
+  
+});
+
+
+
+
 
 // ------- Helpers -------
 function extractLastUserMessage(messages) {
@@ -240,6 +216,14 @@ app.post(
     }
   } catch (error) {
     console.error("Error in /v1/chat/completions:", error);
+    if (error?.message?.includes("413") || error?.statusCode === 413) {
+      return res.status(413).json({
+        error: {
+          message: "Payload too large. Please shorten your input.",
+          type: "invalid_request_error",
+        },
+      });
+    }
     res.status(500).json({
       error: {
         message:

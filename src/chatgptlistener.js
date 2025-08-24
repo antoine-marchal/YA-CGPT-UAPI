@@ -1,4 +1,3 @@
-// index.js
 import { firefox } from "playwright-core";
 import { launchOptions } from "camoufox-js";
 import fs from "fs";
@@ -10,7 +9,7 @@ const __dirname = path.dirname(__filename);
 
 // --- Config ---
 const SESSION_FILE = "session.json";
-const URL = "https://chatgpt.com/?temporary-chat=true&model=gpt-5-instant";
+const URL = "https://chatgpt.com/?temporary-chat=true&model=gpt-5-instant"; //or gpt-5-t-mini or gpt-5-thinking or gpt-5
 const INJECT_PATH = path.join(__dirname, "jsinject.js");
 
 // --- Helpers ---

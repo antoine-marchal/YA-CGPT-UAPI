@@ -7,12 +7,15 @@ This project launches a browser, injects custom scripts, and exposes endpoints s
 
 ## Features
 
-- ✅ OpenAI-like `/v1/chat/completions` endpoint (streaming & non-streaming)  
-- ✅ Playwright automation of ChatGPT web UI  
-- ✅ Session persistence via `session.json`  
-- ✅ Request/response interception with `jsinject.js`  
-- ✅ Graceful shutdown & mutex handling for concurrency  
-- ✅ Save and reload ChatGPT sessions with `savesession.js`  
+- ✅ OpenAI-like `/v1/chat/completions` endpoint (streaming & non-streaming)
+- ✅ Playwright automation of ChatGPT web UI
+- ✅ Session persistence via `session.json`
+- ✅ Request/response interception with `jsinject.js`
+- ✅ Graceful shutdown & mutex handling for concurrency
+- ✅ Save and reload ChatGPT sessions with `savesession.js`
+- ✅ **Refresh context shortcut**: press `r` in the console to reset the browser context without restarting the server
+- ✅ **Error handling**: prevents crashes on `413 Payload Too Large` or invalid requests
+- ✅ **Build to `.exe`**: preconfigured `pkg` support to package into a standalone executable
 
 ---
 
@@ -91,45 +94,30 @@ If `session.json` is missing or invalid, the API will not function.
 ---
 
 ## Development
-### Detailed Module Interaction
+### Refactored Folder Structure
 
-```mermaid
-flowchart LR
-  subgraph API Layer
-    A[index.js]
-  end
-
-  subgraph Browser Automation
-    B[chatgptlistener.js]
-    C[savesession.js]
-  end
-
-  subgraph Injection Layer
-    D[jsinject.js]
-  end
-
-  subgraph Persistence
-    E[session.json]
-  end
-
-  A -->|Starts/controls| B
-  A -->|Exposes endpoints| Client[External Clients]
-  B -->|Launches/handles| ChatGPT[ChatGPT Web UI]
-  B -->|Manages sessions| E
-  B -->|Injects scripts| D
-  C -->|Saves/restores sessions| E
-  D -->|Intercepts responses| ChatGPT
-  ChatGPT -->|Returns data| B
-  B -->|Streamed responses| A
-  A -->|Returns API-compatible output| Client
+```
+src/
+  services/
+    chatgptService.js      # Manages Playwright browser & ChatGPT prompts
+    sessionService.js      # Handles session save/load
+  utils/
+    mutex.js               # Simple mutex to serialize browser calls
+chatgptlistener.js         # Browser automation & message streaming
+savesession.js             # CLI tool to save/reuse ChatGPT sessions
+jsinject.js                # Injected script to intercept ChatGPT responses
+index.js                   # Express API server entrypoint
 ```
 
 ### Scripts
 
-- [`index.js`](index.js) → Express API server + ChatGPT integration  
-- [`chatgptlistener.js`](chatgptlistener.js) → Browser automation & message streaming  
-- [`jsinject.js`](jsinject.js) → Injected script to intercept ChatGPT responses  
-- [`savesession.js`](savesession.js) → CLI tool to save/reuse ChatGPT sessions  
+- [`index.js`](index.js) → Express API server (uses services for logic)
+- [`src/services/chatgptService.js`](src/services/chatgptService.js) → ChatGPT Playwright wrapper
+- [`src/services/sessionService.js`](src/services/sessionService.js) → Save/reuse ChatGPT sessions
+- [`chatgptlistener.js`](chatgptlistener.js) → Browser automation & message streaming
+- [`jsinject.js`](jsinject.js) → Injected script to intercept ChatGPT responses
+- [`src/utils/mutex.js`](src/utils/mutex.js) → Mutex utility
+- [`savesession.js`](savesession.js) → CLI session management tool
 
 ### Running in Development Mode
 
@@ -194,3 +182,34 @@ npm run lint
 ## License
 
 MIT
+## Building Windows Executable
+
+This project uses **esbuild** + **pkg** to produce a distributable `.exe`.
+
+### Steps
+1. Install dependencies:
+   ```sh
+   npm install
+   npm install --save-dev esbuild
+   ```
+
+2. Build bundled output:
+   ```sh
+   npm run build:bundle
+   ```
+
+   This creates `dist/bundle.js` (CommonJS bundle).
+
+3. Package into executable:
+   ```sh
+   npm run build:exe
+   ```
+
+   This produces `dist/yatcgptuapi.exe`.
+
+4. Run executable:
+   ```sh
+   ./dist/yatcgptuapi.exe
+   ```
+
+The bundling step ensures ESM syntax (`import`, `import.meta`, `await`) is transformed into a CommonJS-compatible format that `pkg` can compile without errors.
