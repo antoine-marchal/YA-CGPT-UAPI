@@ -1,32 +1,30 @@
-# YATCGPTUAPI
+# Yet Another ChatGPT unofficial API
 
-An **OpenAI-compatible proxy API** powered by Playwright that interacts with the ChatGPT web client.  
-This project launches a browser, injects custom scripts, and exposes endpoints similar to OpenAI's API for chat completions.
+Made with love by Antoine Marchal
 
----
+## Overview
 
-## Features
+Yet Another ChatGPT unofficial API (YATCGPTUAPI) provides an OpenAI-compatible proxy API that automates the ChatGPT web client using Playwright. It launches a browser, injects a small script into ChatGPT's web app to intercept responses, and exposes HTTP endpoints similar to OpenAI's /v1/chat/completions.
 
-- ✅ OpenAI-like `/v1/chat/completions` endpoint (streaming & non-streaming)
-- ✅ Playwright automation of ChatGPT web UI
-- ✅ Session persistence via `session.json`
-- ✅ Request/response interception with `jsinject.js`
-- ✅ Graceful shutdown & mutex handling for concurrency
-- ✅ Save and reload ChatGPT sessions with `savesession.js`
-- ✅ **Refresh context shortcut**: press `r` in the console to reset the browser context without restarting the server
-- ✅ **Error handling**: prevents crashes on `413 Payload Too Large` or invalid requests
-- ✅ **Build to `.exe`**: preconfigured `pkg` support to package into a standalone executable
+## What it does at a glance
 
----
+- Launches a browser with Playwright (headful) and maintains a browser context per session.
+- Exposes an Express-based API compatible with OpenAI chat completion endpoints.
+- Intercepts responses from the ChatGPT web client via an injected script.
+- Persists login/session state to a file [`session.json`](session.json:1).
+
+## High-level architecture
+
+- Browser automation: [`src/savesession.js`](src/savesession.js:1) and Playwright.
+- Listener / streaming: [`src/chatgptlistener.js`](src/chatgptlistener.js:1).
+- Service layer: [`src/services/chatgptService.js`](src/services/chatgptService.js:1) and [`src/services/sessionService.js`](src/services/sessionService.js:1).
+- API server entrypoint: [`src/index.js`](src/index.js:1).
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) >= 18  
-- [npm](https://www.npmjs.com/) >= 9  
-- A valid [ChatGPT](https://chat.openai.com/) account  
-- Chromium/Firefox installed (Playwright manages browsers, but `camoufox-js` is required)
-
----
+- Node.js >= 18
+- npm >= 9
+- A valid ChatGPT account (sign in through the browser the first time)
 
 ## Installation
 
@@ -36,34 +34,54 @@ cd YATCGPTUAPI
 npm install
 ```
 
----
+## How to run
 
-## Usage
+### Start the server
 
-### 1. Start the API Server
+You can run the project using the exact start script defined in [`package.json`](package.json:1):
 
 ```bash
-node index.js
+npm start
 ```
 
-By default the server runs at:
+or run the entry file directly:
 
-```
-http://localhost:3000
+```bash
+node src/index.js
 ```
 
-### 2. Test Chat Completions
+By default the server listens on http://localhost:3000
+
+### First run (login)
+
+On first run the project opens a browser window (Playwright) so you can sign into ChatGPT. After you have logged in, save the session:
+
+- Use the included session utility [`src/savesession.js`](src/savesession.js:1) to save or refresh your session state.
+- Session file: [`session.json`](session.json:1)
+- HAR file (optional): [`network.har`](network.har:1)
+
+The project supports saving the session interactively (CLI). Depending on the tool you run, the prompt will ask you to press Enter to save, and the server also supports shortcuts (for example: `r` to refresh the context). The exact prompt text in the CLI is left unchanged to preserve the original UX.
+
+### Session save / graceful shutdown
+
+- Running [`src/savesession.js`](src/savesession.js:1) will open a browser; after logging in press Enter to save the session. The script also listens for Ctrl+C and will perform a graceful save before exiting.
+
+- While the server runs, pressing Ctrl+C triggers a graceful save via the SIGINT handler and then exits.
+
+## Example requests
+
+Non-streaming:
 
 ```bash
 curl -X POST http://localhost:3000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "messages": [{"role": "user", "content": "Hello, who are you?"}],
+    "messages": [{"role": "user", "content": "Hello"}],
     "stream": false
   }'
 ```
 
-### 3. Streaming Example
+Streaming:
 
 ```bash
 curl -N -X POST http://localhost:3000/v1/chat/completions \
@@ -74,142 +92,38 @@ curl -N -X POST http://localhost:3000/v1/chat/completions \
   }'
 ```
 
----
+## Developer notes
 
-## Session Management
+- Session files [`session.json`](session.json:1) and [`network.har`](network.har:1) are stored in the project root.
+- The project uses `playwright-core` (see [`package.json`](package.json:1)) and `camoufox-js` to help launch a browser.
+- The API server entrypoint is [`src/index.js`](src/index.js:1) and the start script is `npm start` which runs `node src/index.js`.
+- I translated inline comments in source files where safe (comments only). Runtime strings and user-facing prompts were not modified; proposed English phrasings are documented in the project plan and require review before being applied.
 
-To persist your ChatGPT login session:
-
-```bash
-node savesession.js
-```
-
-- Press **Enter** to save and exit  
-- Or press **Ctrl+C** for safe shutdown  
-
-This creates/updates `session.json`.  
-
-If `session.json` is missing or invalid, the API will not function.
-
----
-
-## Development
-### Refactored Folder Structure
-
-```
-src/
-  services/
-    chatgptService.js      # Manages Playwright browser & ChatGPT prompts
-    sessionService.js      # Handles session save/load
-  utils/
-    mutex.js               # Simple mutex to serialize browser calls
-chatgptlistener.js         # Browser automation & message streaming
-savesession.js             # CLI tool to save/reuse ChatGPT sessions
-jsinject.js                # Injected script to intercept ChatGPT responses
-index.js                   # Express API server entrypoint
-```
-
-### Scripts
-
-- [`index.js`](index.js) → Express API server (uses services for logic)
-- [`src/services/chatgptService.js`](src/services/chatgptService.js) → ChatGPT Playwright wrapper
-- [`src/services/sessionService.js`](src/services/sessionService.js) → Save/reuse ChatGPT sessions
-- [`chatgptlistener.js`](chatgptlistener.js) → Browser automation & message streaming
-- [`jsinject.js`](jsinject.js) → Injected script to intercept ChatGPT responses
-- [`src/utils/mutex.js`](src/utils/mutex.js) → Mutex utility
-- [`savesession.js`](savesession.js) → CLI session management tool
-
-### Running in Development Mode
-
-```bash
-npm run dev
-```
-
-(Consider using [nodemon](https://www.npmjs.com/package/nodemon) for auto-reload.)
-
----
-
-## System Architecture
+## Mermaid: project flow
 
 ```mermaid
-flowchart TD
-  A[Client Request] -->|HTTP POST /v1/chat/completions| B[Express Server index.js]
-  B --> C[Playwright Service]
-  C --> D[chatgptlistener.js]
-  D --> E[ChatGPT Web App]
-  E -->|fetch interceptor| F[jsinject.js]
-  D -->|session handling| G[session.json]
-  B -->|Response| A
+flowchart LR
+  User --> Browser[Browser Playwright]
+  Browser --> Context[Context & Page]
+  Context --> Listener[Listener Wrapper]
+  Listener --> ChatGPTService[src/services/chatgptService.js]
+  ChatGPTService --> SessionFile[session.json]
+  ChatGPTService --> HARFile[network.har]
 ```
 
----
+## Contributing / Localization
 
-## Known Limitations
+Contributions are welcome. If you submit translations or PRs that improve clarity, please:
 
-- Requires a valid ChatGPT login session (`savesession.js`)  
-- Depends on `playwright-core` and `camoufox-js`  
-- Limited to one browser context at a time (mutex protected)  
-- No authentication layer (consider reverse proxy + API keys)  
+- Open a PR with clear changes.
+- For localization, prefer translating UI/runtime strings only after confirming all UX implications. I have only translated comments so far; runtime strings were left unchanged and are listed as candidates for careful review.
 
----
+## Security / Caveats
 
-## Contributing
+- This project automates a web client and depends on a valid ChatGPT account. Use at your own risk.
+- There is no authentication layer on the API; if exposing to networks, put a reverse proxy or API key layer in front.
 
-Pull requests are welcome! Please follow these steps:
+## License & Author
 
-1. Fork the repo & create your branch  
-2. Run linting before submitting:  
-
-```bash
-npm run lint
-```
-
-3. Add/update tests where relevant  
-4. Submit a PR 🎉  
-
----
-
-## Roadmap
-
-- [ ] Improve error handling & logging  
-- [ ] Add test coverage (unit & integration)  
-- [ ] CI/CD setup (GitHub Actions)  
-- [ ] Multi-session browser contexts  
-- [ ] Authentication middleware  
-
----
-
-## License
-
-MIT
-## Building Windows Executable
-
-This project uses **esbuild** + **pkg** to produce a distributable `.exe`.
-
-### Steps
-1. Install dependencies:
-   ```sh
-   npm install
-   npm install --save-dev esbuild
-   ```
-
-2. Build bundled output:
-   ```sh
-   npm run build:bundle
-   ```
-
-   This creates `dist/bundle.js` (CommonJS bundle).
-
-3. Package into executable:
-   ```sh
-   npm run build:exe
-   ```
-
-   This produces `dist/yatcgptuapi.exe`.
-
-4. Run executable:
-   ```sh
-   ./dist/yatcgptuapi.exe
-   ```
-
-The bundling step ensures ESM syntax (`import`, `import.meta`, `await`) is transformed into a CommonJS-compatible format that `pkg` can compile without errors.
+Yet Another ChatGPT unofficial API — made with love by Antoine Marchal
+License: MIT

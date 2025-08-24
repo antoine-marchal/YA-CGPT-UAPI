@@ -3,15 +3,12 @@
   "version": "1.0.0",
   "main": "src/index.js",
   "scripts": {
-    "dev": "nodemon src/index.js",
-    "start": "node src/index.js",
-    "build:exe": "nexe -i wrapper.js -o dist/yatcgptuapi.exe --target windows-x64-14.5.0",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/index.js"
   },
   "type": "module",
   "keywords": [],
-  "author": "Unknown",
-  "license": "ISC",
+  "author": "Antoine Marchal",
+  "license": "MIT",
   "description": "Yet Another Chat GPT Unofficial API",
   "dependencies": {
     "camoufox": "^0.1.7",
@@ -19,9 +16,5 @@
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "playwright-core": "^1.55.0"
-  },
-  "devDependencies": {
-    "esbuild": "^0.25.9",
-    "nodemon": "^3.1.10"
   }
 }
