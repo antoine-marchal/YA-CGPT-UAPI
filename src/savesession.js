@@ -2,8 +2,10 @@ import { firefox } from "playwright-core";
 import { launchOptions } from "camoufox-js";
 import fs from "fs";
 import readline from "readline";
-const SESSION_FILE = "session.json";
-const HAR_FILE = "network.har";
+import path from "path";
+
+const SESSION_FILE = path.resolve(process.cwd(), "session.json");
+const HAR_FILE = path.resolve(process.cwd(), "network.har");
 
 const browser = await firefox.launch({
   ...(await launchOptions({})),

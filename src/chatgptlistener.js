@@ -101,24 +101,32 @@ export async function init({
   sessionFile = SESSION_FILE,
   injectPath = INJECT_PATH,
 } = {}) {
-  const browser = await firefox.launch({
+  const userDataDir = path.resolve(process.cwd(), "userdata");
+  let storageState;
+  if (fs.existsSync(sessionFile)) {
+    try {
+      const raw = fs.readFileSync(sessionFile, "utf8");
+      storageState = JSON.parse(raw);
+    } catch (e) {
+      console.warn("⚠️ Failed to parse session file, starting fresh:", e);
+    }
+  }
+  const context = await firefox.launchPersistentContext(userDataDir, {
     ...(await launchOptions({})),
     headless,
+    storageState,
   });
-
-  const useStorage = fs.existsSync(sessionFile);
-  const context = await browser.newContext(
-    useStorage ? { storageState: sessionFile } : {}
-  );
-
+  const browser = context.browser();
+ 
   const page = await context.newPage();
-  const injectCode = fs.readFileSync(injectPath, "utf8");
-
+  const injectBuf = fs.readFileSync(injectPath);
+  const injectCode = injectBuf.toString("utf8");
+ 
   // (Optional) useful on Chromium; harmless on FF
   try { await context.addInitScript(injectCode); } catch {}
-
+ 
   await page.goto(url, { waitUntil: "domcontentloaded" });
-
+ 
   const injected = await injectMainWorld(page, injectCode);
   console.log(injected ? "Injector found" : "Injector flag not found — likely CSP");
 
