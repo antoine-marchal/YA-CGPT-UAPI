@@ -10,7 +10,7 @@ export const playwrightService = {
     if (readyPromise) return readyPromise;
     readyPromise = (async () => {
       const s = await listenerInit({
-        headless: false, // process.env.HEADLESS !== "0"
+        headless: true, // process.env.HEADLESS !== "0"
       });
       browser = s.browser;
       context = s.context;

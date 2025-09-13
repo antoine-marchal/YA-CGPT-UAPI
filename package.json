@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "build" : "npx nexe ./src/index.js -o yatcuapi.exe -t windows-x64-22.19.0 --build"
   },
   "type": "module",
   "keywords": [],
