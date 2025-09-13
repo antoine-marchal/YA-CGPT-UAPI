@@ -148,23 +148,21 @@ app.post(
           ],
         });
 
-        // Stream the fixed message
+        // Stream the fixed message in a single chunk
         const message = "🔄 Browser context refreshed successfully.";
-        for (const char of message) {
-          sseWrite(res, {
-            id,
-            object: "chat.completion.chunk",
-            created,
-            model,
-            choices: [
-              {
-                index: 0,
-                delta: { content: char },
-                finish_reason: null,
-              },
-            ],
-          });
-        }
+        sseWrite(res, {
+          id,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              delta: { content: message },
+              finish_reason: "stop",
+            },
+          ],
+        });
 
         // Final empty delta with finish_reason
         sseWrite(res, {
