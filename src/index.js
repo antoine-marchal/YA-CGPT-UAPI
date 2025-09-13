@@ -118,6 +118,95 @@ app.post(
 
   const id = `chatcmpl-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const created = Math.floor(Date.now() / 1000);
+  
+  // Handle special restart command
+  if (promptText.trim() === "\\restart") {
+    console.log("♻️  Restart command received via API. Refreshing browser context...");
+    try {
+      await playwrightService.saveSession();
+      await playwrightService.closeBrowser();
+      await playwrightService.initializeBrowser();
+      console.log("✅ Browser context refreshed successfully.");
+      if (stream) {
+        // SSE headers
+        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("Connection", "keep-alive");
+
+        // First chunk: role only
+        sseWrite(res, {
+          id,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              delta: { role: "assistant" },
+              finish_reason: null,
+            },
+          ],
+        });
+
+        // Stream the fixed message
+        const message = "🔄 Browser context refreshed successfully.";
+        for (const char of message) {
+          sseWrite(res, {
+            id,
+            object: "chat.completion.chunk",
+            created,
+            model,
+            choices: [
+              {
+                index: 0,
+                delta: { content: char },
+                finish_reason: null,
+              },
+            ],
+          });
+        }
+
+        // Final empty delta with finish_reason
+        sseWrite(res, {
+          id,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              delta: {},
+              finish_reason: "stop",
+            },
+          ],
+        });
+        res.write("data: [DONE]\n\n");
+        res.end();
+      } else {
+        return res.status(200).json({
+          id,
+          object: "chat.completion",
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: "🔄 Browser context refreshed successfully." },
+              finish_reason: "stop",
+            },
+          ],
+        });
+      }
+    } catch (err) {
+      console.error("❌ Failed to refresh context:", err);
+      return res.status(500).json({
+        error: {
+          message: "Failed to refresh context: " + (err?.message || "Unknown error."),
+          type: "api_error",
+        },
+      });
+    }
+  }
 
   try {
     if (stream) {
@@ -236,7 +325,24 @@ app.post(
 });
 
 app.get("/", (req, res) => {
-  res.json({ ok: true, service: "OpenAI-compatible proxy", endpoints: ["/v1/chat/completions"] });
+  res.json({ ok: true, service: "OpenAI-compatible proxy", endpoints: ["/v1/chat/completions", "/v1/models"] });
+});
+
+// OpenAI-compatible models endpoint
+app.get("/v1/models", (req, res) => {
+  const model = MODEL_FALLBACK;
+  const created = Math.floor(Date.now() / 1000);
+  res.json({
+    object: "list",
+    data: [
+      {
+        id: model,
+        object: "model",
+        created,
+        owned_by: "system",
+      },
+    ],
+  });
 });
 
 app.listen(port, () => {
