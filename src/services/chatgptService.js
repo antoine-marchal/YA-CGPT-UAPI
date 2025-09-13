@@ -1,4 +1,4 @@
-import { init as listenerInit, sendMessage as listenerSendMessage } from "../chatgptlistener.js";
+import { init as listenerInit, sendMessage as listenerSendMessage, listModels as listenerListModels, switchModel as listenerSwitchModel } from "../chatgptlistener.js";
 import { Mutex } from "../utils/mutex.js";
 
 let browser, context, page, sessionFile;
@@ -10,7 +10,7 @@ export const playwrightService = {
     if (readyPromise) return readyPromise;
     readyPromise = (async () => {
       const s = await listenerInit({
-        headless: false, // process.env.HEADLESS !== "0"
+        headless: true, // process.env.HEADLESS !== "0"
       });
       browser = s.browser;
       context = s.context;
@@ -20,7 +20,14 @@ export const playwrightService = {
     })();
     return readyPromise;
   },
-
+  async listModels() {
+    await this.initializeBrowser();
+    return await listenerListModels(page);
+  },
+  async switchModel(modelName) {
+    await this.initializeBrowser();
+    return await listenerSwitchModel(page, modelName);
+  },
   async promptChatGPT(prompt, { onChunk, timeoutMs } = {}) {
     await this.initializeBrowser();
     const release = await mutex.acquire();

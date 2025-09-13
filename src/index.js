@@ -120,7 +120,96 @@ app.post(
   const created = Math.floor(Date.now() / 1000);
   
   // Handle special restart command
-  if (promptText.trim() === "\\restart") {
+  if (promptText.trim().startsWith("\\switch")) {
+    const parts = promptText.trim().split(/\s+/);
+    try {
+      let message;
+      if (parts.length === 1) {
+        const models = await playwrightService.listModels();
+        message = "Type \switch modelname with modelname among :\n" + models
+        .filter(m => m.startsWith("model-switcher-")) 
+        .map(m => m.replace("model-switcher-", ""))     
+        .map(m => `• ${m}`)                             
+        .join("\n");                                    
+      } else {
+        const modelName = parts[1];
+        const ok = await playwrightService.switchModel(modelName);
+        message = ok ? `✅ Switched to ${modelName}` : `❌ Failed to switch to ${modelName}`;
+      }
+
+      if (stream) {
+        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("Connection", "keep-alive");
+
+        sseWrite(res, {
+          id,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              delta: { role: "assistant" },
+              finish_reason: null,
+            },
+          ],
+        });
+
+        sseWrite(res, {
+          id,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              delta: { content: message },
+              finish_reason: "stop",
+            },
+          ],
+        });
+
+        sseWrite(res, {
+          id,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              delta: {},
+              finish_reason: "stop",
+            },
+          ],
+        });
+        res.write("data: [DONE]\n\n");
+        res.end();
+      } else {
+        return res.status(200).json({
+          id,
+          object: "chat.completion",
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: message },
+              finish_reason: "stop",
+            },
+          ],
+        });
+      }
+    } catch (err) {
+      console.error("❌ Failed to handle \\switch:", err);
+      return res.status(500).json({
+        error: {
+          message: "Failed to handle \\switch: " + (err?.message || "Unknown error."),
+          type: "api_error",
+        },
+      });
+    }
+  } else if (promptText.trim() === "\\restart") {
     console.log("♻️  Restart command received via API. Refreshing browser context...");
     try {
       await playwrightService.saveSession();
@@ -235,7 +324,6 @@ app.post(
         timeoutMs: STREAM_TIMEOUT_MS,
         onChunk: (chunk) => {
           if (!chunk) return;
-          // Emit deltas as they arrive
           sseWrite(res, {
             id,
             object: "chat.completion.chunk",
@@ -249,7 +337,6 @@ app.post(
               },
             ],
           });
-          // Optionally flush, helpful behind some proxies
           if (typeof res.flushHeaders === "function" && firstContent) {
             res.flushHeaders();
             firstContent = false;

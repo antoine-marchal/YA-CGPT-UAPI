@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 
 // --- Config ---
 const SESSION_FILE = "session.json";
-const URL = "https://chatgpt.com/?temporary-chat=true&model=gpt-5-instant"; //or gpt-5-t-mini or gpt-5-thinking or gpt-5
+const URL = "https://chatgpt.com/?temporary-chat=true"; //&model=gpt-5-instant"; //or gpt-5-t-mini or gpt-5-thinking or gpt-5
 const INJECT_PATH = path.join(__dirname, "jsinject.js");
 
 // --- Helpers ---
@@ -221,6 +221,46 @@ async function submitPrompt(page) {
     await sendBtn.click({ force: true, timeout: 2000 });
   } catch { /* swallow; stream will time out if it really failed */ }
 }
+
+export async function listModels(page) {
+  const dropdown = page.locator('button[data-testid="model-switcher-dropdown-button"]');
+  const box = await dropdown.last().boundingBox();
+  if (!box) throw new Error("Dropdown not visible");
+
+  // Move the mouse and click
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+  const items = page.locator(
+    'div[role="menuitem"].__menu-item[tabindex="0"]:not([aria-disabled="true"])'
+  );
+  const testIds = await items.evaluateAll(els =>
+    els.map(el => el.getAttribute("data-testid"))
+  );
+  await page.mouse.click(box.x + box.width * 2, box.y + box.height / 2);
+  return testIds.filter(Boolean);
+}
+
+export async function switchModel(page, modelName) {
+  const dropdown = page.locator('button[data-testid="model-switcher-dropdown-button"]');
+  const box = await dropdown.last().boundingBox();
+  if (!box) throw new Error("Dropdown not visible");
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+
+  const item = page.locator(
+    `div[role="menuitem"].__menu-item[tabindex="0"][data-testid*="${modelName}"]:not([aria-disabled="true"])`
+  );
+  const itemBox = await item.first().boundingBox();
+  if (!itemBox) throw new Error(`Model ${modelName} not found`);
+
+  await page.mouse.move(itemBox.x + itemBox.width / 2, itemBox.y + itemBox.height / 2);
+  await page.mouse.click(itemBox.x + itemBox.width / 2, itemBox.y + itemBox.height / 2);
+
+  return true;
+}
+
 
 export async function sendMessage(page, text, { onChunk, timeoutMs } = {}) {
   await ensureEditor(page);
