@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 
 // --- Config ---
 const SESSION_FILE = "session.json";
-const URL = "https://chatgpt.com/?temporary-chat=true"; //&model=gpt-5-instant"; //or gpt-5-t-mini or gpt-5-thinking or gpt-5
+const URL = "https://chatgpt.com/?model=gpt-4-1&temporary-chat=true"; //&model=gpt-5-instant"; //or gpt-5-t-mini or gpt-5-thinking or gpt-5
 const INJECT_PATH = path.join(__dirname, "jsinject.js");
 
 // --- Helpers ---
@@ -56,35 +56,23 @@ async function ensureEditor(page) {
 
 function waitForStreamOnce(page, { onChunk, timeoutMs = 60_000 } = {}) {
   return new Promise((resolve, reject) => {
-    let started = false;
     let acc = "";
     let done = false;
-/**
-    const timer = setTimeout(() => {
-      if (!done) {
-        page.off("console", onConsole);
-        reject(new Error("Stream timeout"));
-      }
-    }, timeoutMs);
- */
+
     function onConsole(msg) {
       const t = msg.text();
-      
-      if (t.startsWith("[START]")) {
-        started = true;
-        return;
-      }
-      if (!started) return;
-
+      //console.log(t);
       if (t.startsWith("[MESSAGE]")) {
-        const out = t.replace(/^\[MESSAGE\]\s?/, "");
-        acc += out;
-        if (onChunk && out) onChunk(out);
-        return;
+        const payload = JSON.parse(t.replace(/^\[MESSAGE\]\s?/, ""));
+        if (onChunk) onChunk({ type: "message", ...payload });
+        acc += payload.content || "";
       }
-      if (t.startsWith("[DONE]")) {
+      else if (t.startsWith("[FUNCTION")) {
+        const payload = JSON.parse(t.replace(/^\[FUNCTION.*?\]\s?/, ""));
+        if (onChunk) onChunk({ type: "function", ...payload });
+      }
+      else if (t.startsWith("[DONE]")) {
         done = true;
-        //clearTimeout(timer);
         page.off("console", onConsole);
         resolve({ text: acc });
       }
@@ -93,6 +81,7 @@ function waitForStreamOnce(page, { onChunk, timeoutMs = 60_000 } = {}) {
     page.on("console", onConsole);
   });
 }
+
 
 // --- Public API ---
 export async function init({
@@ -149,40 +138,24 @@ async function clearEditor(page) {
 
 async function pasteIntoEditor(page, text) {
   const editor = await ensureEditor(page);
-  await clearEditor(page);
 
-  // 1) Try real clipboard paste (fires paste handlers)
-  try {
-    const origin = new URL(page.url()).origin;
-    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin });
-    await page.evaluate(async (t) => { await navigator.clipboard.writeText(t); }, text);
-    await editor.focus();
-    await page.keyboard.press(`${CMD}+V`);
-
-    // verify newlines if any were requested
-    if (!text.includes("\n")) return; // single-line, we’re good
-    const pasted = await getEditorText(page);
-    if (pasted.includes("\n")) return; // newlines preserved, done
-    // else fall through to the robust fallback
-  } catch (_) {
-    // ignore and fall back
-  }
-
-  // 2) Robust fallback: insert line-by-line with Shift+Enter between lines
-  await clearEditor(page);
-  await editor.focus();
-
-  const lines = text.split(/\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const part = lines[i];
-    if (part) await page.keyboard.insertText(part);
-    if (i < lines.length - 1) {
-      await page.keyboard.down("Shift");
-      await page.keyboard.press("Enter");
-      await page.keyboard.up("Shift");
+  // Fast path: directly set content with evaluate
+  await page.evaluate((t) => {
+    const editor = document.querySelector('div[contenteditable="true"]');
+    if (!editor) return;
+    // Replace with plain text preserving newlines
+    editor.innerHTML = "";
+    const lines = t.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      if (i > 0) editor.appendChild(document.createElement("br"));
+      editor.appendChild(document.createTextNode(lines[i]));
     }
-  }
+
+    // Dispatch input events so React notices
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true }));
+  }, text);
 }
+
 
 
 async function waitSendEnabled(page, timeout = 8000) {
@@ -262,43 +235,51 @@ export async function switchModel(page, modelName) {
 }
 
 
-export async function sendMessage(page, text, { onChunk, timeoutMs } = {}) {
-  await ensureEditor(page);
+export async function sendMessage(session, text, { onChunk, timeoutMs } = {}) {
+  let { context, page, sessionFile, browser } = session;
 
-  // Start listening BEFORE submit to catch [START]
+  await ensureEditor(page);
   const streamPromise = waitForStreamOnce(page, { onChunk, timeoutMs });
 
-  // Paste the content (handles newlines with Shift+Enter fallback)
   await pasteIntoEditor(page, text);
-
-  // Submit (robust: enabled click → Enter → force click)
   await submitPrompt(page);
 
-  // Wait for completion
   const { text: fullText } = await streamPromise;
-  return fullText;
+
+// close old context
+try {
+  await context.storageState({ path: sessionFile });
+  await context.close();
+} catch (e) {
+  console.warn("Error closing context:", e);
 }
 
+// 🔄 recreate a new persistent context instead of newContext
+const userDataDir = path.resolve(process.cwd(), "userdata");
+const freshContext = await firefox.launchPersistentContext(userDataDir, {
+  ...(await launchOptions({})),
+  headless: true,
+  storageState: fs.existsSync(sessionFile)
+    ? JSON.parse(fs.readFileSync(sessionFile, "utf8"))
+    : undefined,
+});
+const freshPage = await freshContext.newPage();
 
 
+  // reinject js
+  const injectBuf = fs.readFileSync(INJECT_PATH);
+  const injectCode = injectBuf.toString("utf8");
+  try { await freshContext.addInitScript(injectCode); } catch {}
+  await freshPage.goto(URL, { waitUntil: "domcontentloaded" });
+  const reinjected = await injectMainWorld(freshPage, injectCode);
 
-export async function testFlow() {
-  const { browser, context, page, sessionFile } = await init({ headless: true });
+  // 🔄 mutate the original session object
+  session.context = freshContext;
+  session.page = freshPage;
+  session.browser = freshContext.browser(); // keep updated
+  session.injected = reinjected;
 
-  const first = await sendMessage(page, "Hello give me a simple hw snippet code in groovy", {
-    onChunk: (t) => process.stdout.write(t),
-  });
-  console.log("\n--- FIRST DONE ---\n");
-
-  const second = await sendMessage(page, "Now show a class-based version too", {
-    onChunk: (t) => process.stdout.write(t),
-  });
-  console.log("\n--- SECOND DONE ---\n");
-
-  await context.storageState({ path: sessionFile });
-  await browser.close();
-
-  return { first, second };
+  return fullText;
 }
 
 // --- Execute test when run directly ---

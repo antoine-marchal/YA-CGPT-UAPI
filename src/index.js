@@ -54,14 +54,13 @@ rl.on("line", async (input) => {
     console.log("♻️  Refreshing browser context...");
     try {
       await playwrightService.saveSession();
-      await playwrightService.closeBrowser();
-      await playwrightService.initializeBrowser();
+      await playwrightService.closeBrowser();   // resets session
+      await playwrightService.initializeBrowser(); // creates new session
       console.log("✅ Browser context refreshed successfully.");
     } catch (err) {
       console.error("❌ Failed to refresh context:", err);
     }
-  }
-  else if(input.trim().toLowerCase() === "s") {
+  } else if (input.trim().toLowerCase() === "s") {
     console.log("♻️  Saving browser session...");
     try {
       await playwrightService.saveSession();
@@ -69,8 +68,8 @@ rl.on("line", async (input) => {
       console.error("❌ Failed to save session:", err);
     }
   }
-  
 });
+
 
 
 
@@ -102,7 +101,7 @@ app.post(
   '/v1/chat/completions',
   express.json({ limit: '200mb' }), // route-specific limit
   async (req, res) => {
-  const { messages, model = MODEL_FALLBACK, stream = false } = req.body || {};
+  const { messages, model = MODEL_FALLBACK, stream = true } = req.body || {};
   let promptText;
   try {
     promptText = extractLastUserMessage(messages);
@@ -216,6 +215,7 @@ app.post(
       await playwrightService.closeBrowser();
       await playwrightService.initializeBrowser();
       console.log("✅ Browser context refreshed successfully.");
+  
       if (stream) {
         // SSE headers
         res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
@@ -320,30 +320,100 @@ app.post(
       // Stream body
       let firstContent = true;
       console.log("Received a prompt : "+ id);
-      const fullText = await playwrightService.promptChatGPT(promptText, {
+      let funcBuffer = { name: null, args: "" }; // buffer pour concaténer
+      const fullText = await playwrightService.promptChatGPT(JSON.stringify(req.body, null, 2), {
         timeoutMs: STREAM_TIMEOUT_MS,
         onChunk: (chunk) => {
           if (!chunk) return;
-          sseWrite(res, {
-            id,
-            object: "chat.completion.chunk",
-            created,
-            model,
-            choices: [
-              {
-                index: 0,
-                delta: { content: chunk },
-                finish_reason: null,
-              },
-            ],
-          });
-          if (typeof res.flushHeaders === "function" && firstContent) {
-            res.flushHeaders();
-            firstContent = false;
+        
+          if (chunk.type === "message") {
+            // Avant de streamer du texte, vide le buffer si besoin
+            if (funcBuffer.name) {
+              sseWrite(res, {
+                id,
+                object: "chat.completion.chunk",
+                created,
+                model,
+                choices: [
+                  {
+                    index: 0,
+                    delta: {
+                      function_call: {
+                        name: funcBuffer.name,
+                        arguments: funcBuffer.args,
+                      },
+                    },
+                    finish_reason: null,
+                  },
+                ],
+              });
+              funcBuffer = { name: null, args: "" };
+            }
+        
+            sseWrite(res, {
+              id,
+              object: "chat.completion.chunk",
+              created,
+              model,
+              choices: [
+                {
+                  index: 0,
+                  delta: { content: chunk.content },
+                  finish_reason: null,
+                },
+              ],
+            });
           }
-        },
+        
+          else if (chunk.type === "function") {
+            // Bufferiser les morceaux
+            if (!funcBuffer.name) funcBuffer.name = chunk.name;
+            funcBuffer.args += chunk.content || "";
+          }
+        }
       });
 
+
+            // Si un function_call est encore en attente, on le flush
+      if (funcBuffer.name) {
+        sseWrite(res, {
+          id,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                function_call: {
+                  name: funcBuffer.name,
+                  arguments: funcBuffer.args,
+                },
+              },
+              finish_reason: null,
+            },
+          ],
+        });
+        console.log(JSON.stringify({
+          id,
+          object: "chat.completion.chunk",
+          created,
+          model,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                function_call: {
+                  name: funcBuffer.name,
+                  arguments: funcBuffer.args,
+                },
+              },
+              finish_reason: null,
+            },
+          ],
+        },0,2));
+        funcBuffer = { name: null, args: "" };
+      }
       // Final empty delta with finish_reason
       sseWrite(res, {
         id,
