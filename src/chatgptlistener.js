@@ -236,7 +236,7 @@ export async function switchModel(page, modelName) {
 
 
 export async function sendMessage(session, text, { onChunk, timeoutMs } = {}) {
-  let { context, page, sessionFile, browser } = session;
+  let { page } = session;
 
   await ensureEditor(page);
   const streamPromise = waitForStreamOnce(page, { onChunk, timeoutMs });
@@ -246,41 +246,23 @@ export async function sendMessage(session, text, { onChunk, timeoutMs } = {}) {
 
   const { text: fullText } = await streamPromise;
 
-// close old context
-try {
-  await context.storageState({ path: sessionFile });
-  await context.close();
-} catch (e) {
-  console.warn("Error closing context:", e);
-}
+  // --- Soft reload unique ---
+  const injectBuf = fs.readFileSync(INJECT_PATH, "utf8");
+  try { await page.addInitScript(injectBuf); } catch {}
 
-// 🔄 recreate a new persistent context instead of newContext
-const userDataDir = path.resolve(process.cwd(), "userdata");
-const freshContext = await firefox.launchPersistentContext(userDataDir, {
-  ...(await launchOptions({})),
-  headless: true,
-  storageState: fs.existsSync(sessionFile)
-    ? JSON.parse(fs.readFileSync(sessionFile, "utf8"))
-    : undefined,
-});
-const freshPage = await freshContext.newPage();
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "domcontentloaded" }),
+    page.evaluate(url => { document.location = url; }, URL),
+  ]);
 
-
-  // reinject js
-  const injectBuf = fs.readFileSync(INJECT_PATH);
-  const injectCode = injectBuf.toString("utf8");
-  try { await freshContext.addInitScript(injectCode); } catch {}
-  await freshPage.goto(URL, { waitUntil: "domcontentloaded" });
-  const reinjected = await injectMainWorld(freshPage, injectCode);
-
-  // 🔄 mutate the original session object
-  session.context = freshContext;
-  session.page = freshPage;
-  session.browser = freshContext.browser(); // keep updated
+  // Réinjection après que le DOM est prêt
+  const reinjected = await injectMainWorld(page, injectBuf);
   session.injected = reinjected;
 
   return fullText;
 }
+
+
 
 // --- Execute test when run directly ---
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
