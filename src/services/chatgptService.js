@@ -5,6 +5,7 @@ import {
   switchModel as listenerSwitchModel,
 } from "../chatgptlistener.js";
 import { Mutex } from "../utils/mutex.js";
+import { executeFunction } from "../utils/functionExecutor.js";
 
 let session;  // store the full session
 let readyPromise = null;
@@ -36,7 +37,45 @@ export const playwrightService = {
     await this.initializeBrowser();
     const release = await mutex.acquire();
     try {
-      return await listenerSendMessage(session, prompt, { onChunk, timeoutMs });
+      return await listenerSendMessage(session, prompt, {
+        onChunk: async (chunk) => {
+          if (chunk.type === "function") {
+            try {
+              const result = await executeFunction(
+                chunk.name,
+                chunk.arguments
+              );
+              if (onChunk) {
+                onChunk({
+                  type: "function_result",
+                  name: chunk.name,
+                  result,
+                });
+              }
+            } catch (err) {
+              if (onChunk) {
+                onChunk({
+                  type: "function_error",
+                  name: chunk.name,
+                  error: err.message,
+                });
+              }
+            }
+          } else if (chunk.type === "attachment") {
+            if (onChunk) {
+              onChunk({
+                type: "attachment",
+                name: chunk.name,
+                mime: chunk.mime,
+                data: chunk.data,
+              });
+            }
+          } else {
+            if (onChunk) onChunk(chunk);
+          }
+        },
+        timeoutMs,
+      });
     } finally {
       release();
     }

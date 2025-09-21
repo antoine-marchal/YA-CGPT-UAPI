@@ -74,7 +74,7 @@ function waitForStreamOnce(page, { onChunk, timeoutMs = 60_000 } = {}) {
       else if (t.startsWith("[DONE]")) {
         done = true;
         page.off("console", onConsole);
-        resolve({ text: acc });
+        resolve({ text: acc, attachments: [] });
       }
     }
 

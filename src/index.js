@@ -1,3 +1,9 @@
+// Register built-in system functions
+import { registerFunction } from './utils/functionExecutor.js';
+import {bash,ls} from './utils/systemFunctions.js';
+
+registerFunction('bash', bash);
+registerFunction('ls', ls);
 // index.js
 // OpenAI-compatible SSE proxy (Playwright-backed).
 // - Streams only when explicitly requested (body.stream === true OR Accept: text/event-stream).
@@ -318,7 +324,14 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
 
 // ---- Info endpoints ----
 app.get("/", (req, res) => {
-  res.json({ ok: true, service: "OpenAI-compatible proxy", endpoints: ["/v1/chat/completions", "/v1/models"] });
+  res.json({
+    ok: true,
+    service: "OpenAI-compatible proxy",
+    endpoints: ["/v1/chat/completions", "/v1/models"],
+    capabilities: {
+      can_use_attachments: true
+    }
+  });
 });
 
 app.get("/v1/models", (req, res) => {
