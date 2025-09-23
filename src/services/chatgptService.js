@@ -16,7 +16,7 @@ export const playwrightService = {
     if (readyPromise) return readyPromise;
     readyPromise = (async () => {
       session = await listenerInit({
-        headless: true, // or process.env.HEADLESS !== "0"
+        headless: cliOptions.headless, // or process.env.HEADLESS !== "0"
       });
       return session;
     })();

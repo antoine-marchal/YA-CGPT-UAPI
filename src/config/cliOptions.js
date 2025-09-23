@@ -3,6 +3,7 @@ const args = process.argv.slice(2);
 export const cliOptions = {
   model: "gpt-5-instant",
   useprefix: false,
+  headless:true,
 };
 
 for (let i = 0; i < args.length; i++) {
@@ -14,5 +15,7 @@ for (let i = 0; i < args.length; i++) {
     cliOptions.model = arg.split("=")[1];
   } else if (arg === "--useprefix") {
     cliOptions.useprefix = true;
+  }else if (arg === "--head") {
+    cliOptions.headless = false;
   }
 }
