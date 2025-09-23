@@ -1,3 +1,4 @@
+import { cliOptions } from "./config/cliOptions.js";
 // index.js
 // OpenAI-compatible SSE proxy (Playwright-backed).
 // Streams only regular assistant messages (no tool/function calls).
@@ -133,7 +134,10 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
       };
 
       // Compose prompt, send to underlying service
-      const fullBodyStr = prefixPrompt + JSON.stringify(req.body, null, 2);
+      const bodyToSend = cliOptions.useprefix
+        ? prefixPrompt + JSON.stringify(req.body, null, 2)
+        : JSON.stringify(req.body, null, 2);
+      const fullBodyStr = bodyToSend;
       await playwrightService.promptChatGPT(fullBodyStr, { timeoutMs: STREAM_TIMEOUT_MS, onChunk });
 
       // At the end: try to detect function call in full buffer
@@ -233,7 +237,10 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
 
     // ---------- NON-STREAM MODE ----------
     // Call underlying provider as a full text (non-streaming) request
-    const fullBodyStr = prefixPrompt + JSON.stringify(req.body, null, 2);
+    const bodyToSend = cliOptions.useprefix
+      ? prefixPrompt + JSON.stringify(req.body, null, 2)
+      : JSON.stringify(req.body, null, 2);
+    const fullBodyStr = bodyToSend;
     const fullText = await playwrightService.promptChatGPT(fullBodyStr, { timeoutMs: STREAM_TIMEOUT_MS });
 
     let content = typeof fullText === "string" ? fullText : "";

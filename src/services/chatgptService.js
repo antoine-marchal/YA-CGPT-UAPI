@@ -1,3 +1,4 @@
+import { cliOptions } from "../config/cliOptions.js";
 import {
   init as listenerInit,
   sendMessage as listenerSendMessage,
