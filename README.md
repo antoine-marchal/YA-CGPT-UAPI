@@ -1,10 +1,22 @@
 # Yet Another ChatGPT unofficial API
 
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://shields.io/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![npm version](https://img.shields.io/npm/v/npm.svg)](https://www.npmjs.com/)
+
 Made with love by Antoine Marchal
 
 ## Overview
 
 Yet Another ChatGPT unofficial API (YATCGPTUAPI) provides an OpenAI-compatible proxy API that automates the ChatGPT web client using Playwright. It launches a browser, injects a small script into ChatGPT's web app to intercept responses, and exposes HTTP endpoints similar to OpenAI's /v1/chat/completions.
+
+## Quick Start Example
+
+After installation, you can quickly check if the API is working:
+
+```bash
+curl -X POST http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Hello!"}],"stream":false}'
+```
 
 ## What it does at a glance
 
@@ -13,12 +25,28 @@ Yet Another ChatGPT unofficial API (YATCGPTUAPI) provides an OpenAI-compatible p
 - Intercepts responses from the ChatGPT web client via an injected script.
 - Persists login/session state to a file [`session.json`](session.json:1).
 
+## Configuration
+
+- **PORT**: Set `PORT` environment variable to change API server port (default: 3000).
+- **SESSION_FILE**: Path to ChatGPT session state file (default: `session.json`).
+- Other environment variables: see [`src/index.js`](src/index.js:1) for advanced config.
+
 ## High-level architecture
 
 - Browser automation: [`src/savesession.js`](src/savesession.js:1) and Playwright.
 - Listener / streaming: [`src/chatgptlistener.js`](src/chatgptlistener.js:1).
 - Service layer: [`src/services/chatgptService.js`](src/services/chatgptService.js:1) and [`src/services/sessionService.js`](src/services/sessionService.js:1).
 - API server entrypoint: [`src/index.js`](src/index.js:1).
+
+## API Reference
+
+| Endpoint                 | Method | Description                   |
+|--------------------------|--------|-------------------------------|
+| /v1/chat/completions     | POST   | ChatGPT-style completions     |
+| /v1/models               | GET    | List available models         |
+| /v1/session/refresh      | POST   | Refresh ChatGPT session state |
+
+Options like `stream`, `messages`, and model are supported per OpenAI API.
 
 ## Prerequisites
 
@@ -92,6 +120,23 @@ curl -N -X POST http://localhost:3000/v1/chat/completions \
   }'
 ```
 
+## Troubleshooting / FAQ
+
+- **Playwright browser fails to launch?**
+  - Make sure all Playwright dependencies are installed: `npx playwright install`.
+- **Session expired?**
+  - Re-run [`src/savesession.js`](src/savesession.js:1) and log in again.
+- **API returns 401 or session errors?**
+  - Check that your `session.json` is valid and up-to-date.
+- **Port already in use?**
+  - Set a custom `PORT` env variable or free the port.
+
+## Security Tips
+
+:warning: **No authentication is enabled by default.**
+- If exposing this API to public or external networks, use a reverse proxy (e.g. Nginx) or add API key auth.
+- Protect `session.json`—it contains your ChatGPT session.
+
 ## Developer notes
 
 - Session files [`session.json`](session.json:1) and [`network.har`](network.har:1) are stored in the project root.
@@ -117,6 +162,8 @@ Contributions are welcome. If you submit translations or PRs that improve clarit
 
 - Open a PR with clear changes.
 - For localization, prefer translating UI/runtime strings only after confirming all UX implications. I have only translated comments so far; runtime strings were left unchanged and are listed as candidates for careful review.
+
+For more info, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Security / Caveats
 

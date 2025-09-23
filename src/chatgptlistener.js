@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename);
 
 // --- Config ---
 const SESSION_FILE = "session.json";
-const URL = "https://chatgpt.com/?model=gpt-4-1&temporary-chat=true"; //&model=gpt-5-instant"; //or gpt-5-t-mini or gpt-5-thinking or gpt-5
+const URL = "https://chatgpt.com/?model=gpt-5&temporary-chat=true"; //&model=gpt-5-instant"; //or gpt-5-t-mini or gpt-5-thinking or gpt-5
 const INJECT_PATH = path.join(__dirname, "jsinject.js");
 
 // --- Helpers ---

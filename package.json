@@ -4,7 +4,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "build" : "npx nexe ./src/index.js -o yatcuapi.exe -t windows-x64-22.19.0 --build"
+    "build": "npx nexe ./src/index.js -o yatcuapi.exe -t windows-x64-22.19.0 --build"
   },
   "type": "module",
   "keywords": [],
@@ -16,6 +16,7 @@
     "camoufox-js": "^0.7.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "pdf-parse": "^1.1.1",
     "playwright-core": "^1.55.0"
   }
 }

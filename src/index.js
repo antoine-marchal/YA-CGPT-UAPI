@@ -12,6 +12,8 @@ const port = process.env.PORT || 3000;
 
 const prefixPrompt =
   "do not forget to add in the json response in case of a function the name of the function for instance {\"name\":\"write\",\"arguments\":{...}}\n" +
+  "do not repeat the function if the function has been already succesfuly applied or if there is already the exact content. No change made.\n" +
+  "do not create a function that is not named in the prompt below, if not mentionned, use a regular messsage.\n" +
   "dont react or mention this basic rule in your answer, just keep it in mind.\n";
 
 const MODEL_FALLBACK = process.env.OPENAI_MODEL || "gpt-5";
@@ -68,20 +70,7 @@ rl.on("line", async (input) => {
   }
 });
 
-// ---- Helpers ----
-function extractLastUserMessage(messages) {
-  if (!Array.isArray(messages) || messages.length === 0) {
-    throw new Error("Invalid request: 'messages' must be a non-empty array.");
-  }
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i];
-    if (!m || typeof m !== "object") throw new Error(`Invalid message at index ${i}.`);
-    if (typeof m.role !== "string" || !m.role.trim()) throw new Error(`Invalid role at index ${i}.`);
-    if (typeof m.content !== "string" || !m.content.trim()) throw new Error(`Invalid content at index ${i}.`);
-    if (m.role === "user") return m.content;
-  }
-  throw new Error("No user message with content found in 'messages'.");
-}
+
 
 function sseWrite(res, obj) {
   try {
@@ -96,14 +85,7 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
   const acceptHeader = String(req.headers.accept || "");
   const wantsStream = req.body?.stream === true || /text\/event-stream/i.test(acceptHeader);
   const { messages, model = MODEL_FALLBACK } = req.body || {};
-  let promptText;
-  try {
-    promptText = extractLastUserMessage(messages);
-  } catch (err) {
-    return res.status(400).json({
-      error: { message: err.message, type: "invalid_request_error", param: "messages" },
-    });
-  }
+
 
   const id = `chatcmpl-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const created = Math.floor(Date.now() / 1000);
@@ -115,7 +97,7 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
       res.setHeader("Cache-Control", "no-cache, no-transform");
       res.setHeader("Connection", "keep-alive");
       res.setHeader("X-Accel-Buffering", "no");
-      if (typeof res.flushHeaders === "function") res.flushHeaders();
+      //if (typeof res.flushHeaders === "function") res.flushHeaders();
 
       // Initial role chunk
       sseWrite(res, {
@@ -125,15 +107,16 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
         model,
         choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }],
       });
-      if (typeof res.flush === "function") try { res.flush(); } catch {}
+      //if (typeof res.flush === "function") try { res.flush(); } catch {}
 
       // Stream text as it arrives, buffer entire assistant message too
       let assistantContent = "";
 
       const onChunk = (chunk) => {
+       
         if (!chunk) return;
         // Accept only "message" or plain content chunks
-        if (chunk.type === "message" || chunk.type === undefined || chunk.type === null) {
+        if (chunk.type === "message" || chunk.type === "function" || chunk.type === undefined || chunk.type === null) {
           const text = chunk.content || "";
           if (text) {
             assistantContent += text;
@@ -144,7 +127,7 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
               model,
               choices: [{ index: 0, delta: { content: text }, finish_reason: null }]
             });
-            if (typeof res.flush === "function") try { res.flush(); } catch {}
+            //if (typeof res.flush === "function") try { res.flush(); } catch {}
           }
         }
       };
@@ -155,16 +138,29 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
 
       // At the end: try to detect function call in full buffer
       function tryFindFunctionCall(text) {
-        // This regex matches a top-level {"name":"something",...} object (non-nested).
-        const regex = /({\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*{[\s\S]*?}})/;
-        const match = regex.exec(text);
-        if (match) {
+        // 1. Try direct JSON.parse (if string, or already object)
+        let obj = null;
+        if (typeof text === "object" && text !== null && typeof text.name === "string" && text.arguments) {
+          return { json: text, raw: JSON.stringify(text), start: 0, end: JSON.stringify(text).length };
+        }
+        if (typeof text === "string") {
           try {
-            const obj = JSON.parse(match[1]);
-            if (typeof obj === "object" && obj.name && obj.arguments) {
-              return { json: obj, raw: match[1], start: match.index, end: match.index + match[1].length };
+            obj = JSON.parse(text);
+            if (obj && typeof obj === "object" && typeof obj.name === "string" && obj.arguments) {
+              return { json: obj, raw: text, start: 0, end: text.length };
             }
           } catch {}
+          // 2. Regex for embedded JSON object
+          const regex = /({\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*{[\s\S]*?}})/;
+          const match = regex.exec(text);
+          if (match) {
+            try {
+              const obj2 = JSON.parse(match[1]);
+              if (typeof obj2 === "object" && obj2.name && obj2.arguments) {
+                return { json: obj2, raw: match[1], start: match.index, end: match.index + match[1].length };
+              }
+            } catch {}
+          }
         }
         return null;
       }
@@ -243,18 +239,33 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
     let content = typeof fullText === "string" ? fullText : "";
 
     function tryFindFunctionCall(text) {
-      const regex = /({\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*{[\s\S]*?}})/;
-      const match = regex.exec(text);
-      if (match) {
+      // 1. Try direct JSON.parse (if string, or already object)
+      let obj = null;
+      if (typeof text === "object" && text !== null && typeof text.name === "string" && text.arguments) {
+        return { json: text, raw: JSON.stringify(text), start: 0, end: JSON.stringify(text).length };
+      }
+      if (typeof text === "string") {
         try {
-          const obj = JSON.parse(match[1]);
-          if (typeof obj === "object" && obj.name && obj.arguments) {
-            return { json: obj, raw: match[1], start: match.index, end: match.index + match[1].length };
+          obj = JSON.parse(text);
+          if (obj && typeof obj === "object" && typeof obj.name === "string" && obj.arguments) {
+            return { json: obj, raw: text, start: 0, end: text.length };
           }
         } catch {}
+        // 2. Regex for embedded JSON object
+        const regex = /({\s*"name"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*{[\s\S]*?}})/;
+        const match = regex.exec(text);
+        if (match) {
+          try {
+            const obj2 = JSON.parse(match[1]);
+            if (typeof obj2 === "object" && obj2.name && obj2.arguments) {
+              return { json: obj2, raw: match[1], start: match.index, end: match.index + match[1].length };
+            }
+          } catch {}
+        }
       }
       return null;
     }
+    
 
     const foundFn = tryFindFunctionCall(content);
 
@@ -274,7 +285,6 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
             index: 0,
             message: {
               role: "assistant",
-              content: "",
               tool_calls: [
                 {
                   id: callId,
@@ -290,11 +300,12 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
           },
         ],
         usage: {
-          prompt_tokens: String(promptText || "").length,
+          prompt_tokens: String(fullBodyStr || "").length,
           completion_tokens: argsStr.length,
-          total_tokens: String(promptText || "").length + argsStr.length,
+          total_tokens: String(fullBodyStr || "").length + argsStr.length,
         }
       };
+
       return res.status(200).json(apiResponse);
     } else {
       // Standard message
@@ -312,9 +323,9 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
           },
         ],
         usage: {
-          prompt_tokens: String(promptText || "").length,
+          prompt_tokens: String(fullBodyStr || "").length,
           completion_tokens: String(message.content || "").length,
-          total_tokens: String(promptText || "").length + String(message.content || "").length,
+          total_tokens: String(fullBodyStr || "").length + String(message.content || "").length,
         },
       };
       return res.status(200).json(apiResponse);
