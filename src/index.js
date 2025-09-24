@@ -11,11 +11,7 @@ import { playwrightService } from "./services/chatgptService.js";
 const app = express();
 const port = process.env.PORT || 3000;
 
-const prefixPrompt =
-  "do not forget to add in the json response in case of a function the name of the function for instance {\"name\":\"write\",\"arguments\":{...}}\n" +
-  "do not repeat the function if the function has been already succesfuly applied or if there is already the exact content. No change made.\n" +
-  "do not create a function that is not named in the prompt below, if not mentionned, use a regular messsage.\n" +
-  "dont react or mention this basic rule in your answer, just keep it in mind.\n";
+
 
 const MODEL_FALLBACK = process.env.OPENAI_MODEL || "gpt-5";
 const STREAM_TIMEOUT_MS = parseInt(process.env.STREAM_TIMEOUT_MS || "1800000", 10); // 30 min
@@ -134,11 +130,9 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
       };
 
       // Compose prompt, send to underlying service
-      const bodyToSend = cliOptions.useprefix
-        ? prefixPrompt + JSON.stringify(req.body, null, 2)
-        : JSON.stringify(req.body, null, 2);
+      const bodyToSend = JSON.stringify(req.body, null, 2);
       const fullBodyStr = bodyToSend;
-      await playwrightService.promptChatGPT(fullBodyStr, { timeoutMs: STREAM_TIMEOUT_MS, onChunk });
+      await playwrightService.promptChatGPT(fullBodyStr, { timeoutMs: STREAM_TIMEOUT_MS, onChunk },cliOptions.useprefix);
 
       // At the end: try to detect function call in full buffer
       function tryFindFunctionCall(text) {
@@ -237,11 +231,9 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
 
     // ---------- NON-STREAM MODE ----------
     // Call underlying provider as a full text (non-streaming) request
-    const bodyToSend = cliOptions.useprefix
-      ? prefixPrompt + JSON.stringify(req.body, null, 2)
-      : JSON.stringify(req.body, null, 2);
+    const bodyToSend = JSON.stringify(req.body, null, 2);
     const fullBodyStr = bodyToSend;
-    const fullText = await playwrightService.promptChatGPT(fullBodyStr, { timeoutMs: STREAM_TIMEOUT_MS });
+    const fullText = await playwrightService.promptChatGPT(fullBodyStr, { timeoutMs: STREAM_TIMEOUT_MS },cliOptions.useprefix);
 
     let content = typeof fullText === "string" ? fullText : "";
 
