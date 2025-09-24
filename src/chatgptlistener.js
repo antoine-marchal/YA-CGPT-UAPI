@@ -236,6 +236,15 @@ export async function switchModel(page, modelName) {
 }
 
 
+export async function attachFilesToChat(session, filePaths = []) {
+  if (!session?.page) throw new Error("No active page in session");
+  const { page } = session;
+  const input = await page.$('input[type="file"][tabindex="-1"]');
+  if (!input) throw new Error("File input element not found in ChatGPT UI");
+  await input.setInputFiles(filePaths);
+  return true;
+}
+
 export async function sendMessage(session, text, { onChunk, timeoutMs } = {}) {
   let { page } = session;
 
