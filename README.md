@@ -5,7 +5,7 @@
 ![Playwright](https://img.shields.io/badge/Playwright-Enabled-yellowgreen)
 
 ## Description
-YA-CGPT-UAPI (Yet Another ChatGPT Universal API) is a Node.js-based middleware designed to provide a unified interface for interacting with ChatGPT models.
+YA-CGPT-UAPI (Yet Another ChatGPT Unofficial API) is a Node.js-based middleware designed to provide a unified interface for interacting with ChatGPT models.
 It standardizes communication, abstracts session handling, and offers a command-line interface (CLI) for quick integration and automation.
 It runs on top of [Playwright](https://playwright.dev/) with the Camoufox browser, automating the ChatGPT web client to provide an **unofficial API**.
 This makes it usable by AI agents such as **Kilo** **Crush** or **Shai**.
