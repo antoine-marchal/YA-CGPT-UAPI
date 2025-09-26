@@ -127,6 +127,25 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
             //if (typeof res.flush === "function") try { res.flush(); } catch {}
           }
         }
+        else if (chunk.type === "thinking") {
+          // special reasoning template
+          const { part, content } = chunk;
+          sseWrite(res, {
+            id,
+            object: "chat.completion.chunk",
+            created,
+            model,
+            choices: [{
+              index: 0,
+              delta: {
+                reasoning: { part, content },
+                thinking: { part, content }
+              },
+              finish_reason: null
+            }]
+          });
+        }
+
       };
 
       // Compose prompt, send to underlying service

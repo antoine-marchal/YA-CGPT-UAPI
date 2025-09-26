@@ -70,7 +70,11 @@ function waitForStreamOnce(page, { onChunk, timeoutMs = 60_000 } = {}) {
       }
       else if (t.startsWith("[FUNCTION")) {
         const payload = JSON.parse(t.replace(/^\[FUNCTION.*?\]\s?/, ""));
-        if (onChunk) onChunk({ type: "function", ...payload });
+        if (onChunk && payload.name != 'web.run' ) onChunk({ type: "function", ...payload });
+      }
+      else if (t.startsWith("[THINKING]")) {
+        const payload = JSON.parse(t.replace(/^\[THINKING\]\s?/, ""));
+        if (onChunk) onChunk({ type: "thinking", ...payload });
       }
       else if (t.startsWith("[DONE]")) {
         done = true;
