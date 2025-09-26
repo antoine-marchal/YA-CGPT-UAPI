@@ -138,7 +138,6 @@ app.post("/v1/chat/completions", express.json({ limit: "200mb" }), async (req, r
             choices: [{
               index: 0,
               delta: {
-                reasoning: { part, content },
                 thinking: { part, content }
               },
               finish_reason: null
